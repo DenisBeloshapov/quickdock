@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: file:; script-src 'self'" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manufacturing+Consent&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+</head>
+<body>
+  <div id="panel" class="panel">
+    <img class="corner corner-tl" src="../../build/corner-tl.png" alt="" />
+    <img class="corner corner-tr" src="../../build/corner-tr.png" alt="" />
+    <img class="corner corner-bl" src="../../build/corner-bl.png" alt="" />
+    <header class="panel-header">
+      <div class="brand">
+        <span class="brand-name">QuickDock</span>
+        <span class="brand-tag">v2.33</span>
+      </div>
+    </header>
+    <nav class="tabs">
+      <button class="tab active" data-tab="clipboard"><span class="tab-num">01</span><span class="tab-label">Буфер</span></button>
+      <button class="tab" data-tab="files"><span class="tab-num">02</span><span class="tab-label">Файлы → PDF</span></button>
+      <button class="tab" data-tab="replies"><span class="tab-num">03</span><span class="tab-label">Ответы</span></button>
+    </nav>
+    <main class="panel-body">
+      <section class="tab-body active" data-tab="clipboard">
+        <div class="section-head"><h2 class="section-title">Буфер обмена</h2><span class="section-hint mono">текущий + 4 предыдущих</span></div>
+        <ul class="clip-list" id="clipList"><li class="empty">История пуста — скопируйте что-нибудь.</li></ul>
+      </section>
+      <section class="tab-body" data-tab="files">
+        <div class="section-head"><h2 class="section-title">Файлы → PDF</h2><span class="section-hint mono">PNG · JPG · DOC · DOCX · XLSX · PDF</span></div>
+        <div class="dropzone" id="dropzone">
+          <div class="dz-inner">
+            <span class="dz-glyph">⤓</span>
+            <span class="dz-text">Перетащите файлы сюда или</span>
+            <label class="dz-pick">
+              <input type="file" id="filePicker" multiple accept=".png,.jpg,.jpeg,.jfif,.bmp,.gif,.webp,.docx,.doc,.xlsx,.xls,.pdf" hidden />
+              <span>+ добавить</span>
+            </label>
+          </div>
+        </div>
+        <div class="files-toolbar">
+          <span class="files-count mono" id="filesCount">0 файлов</span>
+          <span class="spacer"></span>
+          <button class="ghost small" id="btnSelectAll">выделить все</button>
+          <button class="ghost small" id="btnClearFiles">очистить</button>
+        </div>
+        <ul class="file-list" id="fileList"><li class="empty">Файлов нет.</li></ul>
+        <div class="files-actions">
+          <button class="primary" id="btnBuildPdf" disabled><span class="btn-glyph">▢</span> Собрать выбранные в PDF</button>
+        </div>
+        <div class="pdf-status" id="pdfStatus"></div>
+      </section>
+      <section class="tab-body" data-tab="replies">
+        <div class="section-head"><h2 class="section-title">Быстрые ответы</h2><span class="section-hint mono">сохраняются между запусками</span></div>
+        <div class="replies-add">
+          <textarea id="replyInput" placeholder="Введите текст ответа…" rows="3"></textarea>
+          <button class="primary" id="btnAddReply">+ добавить</button>
+        </div>
+        <ul class="replies-list" id="repliesList"><li class="empty">Список пуст.</li></ul>
+      </section>
+    </main>
+    <footer class="panel-footer"><span class="footer-dim mono" id="footerInfo">— готов —</span></footer>
+  </div>
+  <script src="js/panel.js"></script>
+</body>
+</html>
