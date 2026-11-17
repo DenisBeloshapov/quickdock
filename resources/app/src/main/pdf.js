@@ -20,37 +20,191 @@ function classify(fp) {
   return 'unsupported';
 }
 
+// Флаги: COM-объект Word/Excel недоступен в системе. После первой постоянной ошибки
+// (COM не зарегистрирован = Office не установлен) больше не пытаемся — экономит ~30с на каждом файле.
+let wordUnavailable = false;
+let excelUnavailable = false;
+
+// === Поиск LibreOffice (кросс-платформенный fallback) ===
+// LibreOffice даёт близкое к оригиналу соответствие для .doc/.docx/.xls/.xlsx.
+// На Windows ищем в Program Files, в PATH, через реестр.
+let libreofficePath = null;
+let libreofficeChecked = false;
+
+function findLibreOffice() {
+  if (libreofficeChecked) return libreofficePath;
+  libreofficeChecked = true;
+  // 1. soffice в PATH
+  try {
+    const r = require('child_process').execSync(
+      process.platform === 'win32' ? 'where soffice.exe' : 'which soffice',
+      { stdio: ['ignore', 'pipe', 'ignore'] }
+    ).toString().trim();
+    if (r) { libreofficePath = r.split(/\r?\n/)[0]; return libreofficePath; }
+  } catch {}
+  if (process.platform === 'win32') {
+    // 2. Стандартные locations Program Files
+    const candidates = [
+      'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+      'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe',
+    ];
+    for (const c of candidates) {
+      try { if (fs.existsSync(c)) { libreofficePath = c; return libreofficePath; } } catch {}
+    }
+    // 3. Через реестр
+    try {
+      const out = require('child_process').execSync(
+        'powershell.exe -NoProfile -Command "(Get-ItemProperty \'HKLM:\\SOFTWARE\\LibreOffice\\UNO\\InstallPath\' -ErrorAction Stop).\'(default)\'"',
+        { stdio: ['ignore', 'pipe', 'ignore'] }
+      ).toString().trim();
+      if (out) {
+        const cand = out + '\\soffice.exe';
+        try { if (fs.existsSync(cand)) { libreofficePath = cand; return libreofficePath; } } catch {}
+      }
+    } catch {}
+  }
+  return libreofficePath;
+}
+
+// === Конвертация через LibreOffice (soffice --headless --convert-to pdf) ===
+// Кросс-платформенный fallback, когда Word/Excel COM недоступен.
+function convertViaLibreOfficeToPdf(srcPath) {
+  return new Promise((resolve, reject) => {
+    const loBin = findLibreOffice();
+    if (!loBin) { reject(new Error('LibreOffice not found')); return; }
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qd-lo-'));
+    const baseName = path.basename(srcPath).replace(/\.[^.]+$/, '');
+    const expectedPdf = path.join(tmpDir, baseName + '.pdf');
+    // Кавычки: на Windows используем двойные, на Unix — одинарные с экранированием
+    const q = (p) => process.platform === 'win32' ? '"' + p + '"' : "'" + p.replace(/'/g, "'\\''") + "'";
+    const cmd = q(loBin) + ' --headless --norestore --nofirststartwizard --convert-to pdf --outdir ' + q(tmpDir) + ' ' + q(srcPath);
+    exec(cmd, { timeout: 90000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err) => {
+      if (err || !fs.existsSync(expectedPdf)) {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        reject(new Error('LibreOffice convert failed: ' + (err ? (err.killed ? 'timeout' : err.message) : 'no output')));
+        return;
+      }
+      resolve(expectedPdf);
+    });
+  });
+}
+
 function convertViaWordToPdf(wordPath) {
+  if (wordUnavailable) return Promise.reject(new Error('Word unavailable (cached)'));
   return new Promise((resolve, reject) => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qd-word-'));
     const baseName = path.basename(wordPath).replace(/\.(docx?)$/i, '');
     const pdfPath = path.join(tmpDir, baseName + '.pdf');
+    // Одинарные кавычки (literal strings) — экранируем только ' как ''. Не трогаем слэши.
+    const wordPathPS = wordPath.replace(/'/g, "''");
+    const pdfPathPS = pdfPath.replace(/'/g, "''");
     const psScript = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 $ErrorActionPreference = 'Stop'
+$word = $null
 try {
   $word = New-Object -ComObject Word.Application
   $word.Visible = $false
-  $doc = $word.Documents.Open("${wordPath.replace(/\\/g, '\\\\').replace(/'/g, "''")}", $false, $true)
-  $doc.SaveAs2("${pdfPath.replace(/\\/g, '\\\\').replace(/'/g, "''")}", 17)
+  $word.DisplayAlerts = 0
+  $doc = $word.Documents.Open('${wordPathPS}', $false, $true)
+  $doc.SaveAs2('${pdfPathPS}', 17)
   $doc.Close($false)
   $word.Quit()
   [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
   Write-Output 'OK'
 } catch {
+  try { if ($word) { $word.Quit() } } catch {}
   Write-Output ('ERR:' + $_.Exception.Message)
   exit 1
 }`;
-    const psFile = path.join(tmpDir, 'convert.ps1');
-    fs.writeFileSync(psFile, psScript, 'utf8');
-    exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`, { timeout: 90000, windowsHide: true }, (err, stdout) => {
+    // -EncodedCommand (base64-UTF-16LE) — корректная обработка кириллицы в путях.
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, { timeout: 90000, windowsHide: true }, (err, stdout) => {
       const out = (stdout || '').trim();
-      if (err || !out.startsWith('OK')) {
-        const errMsg = out.startsWith('ERR:') ? out.slice(4) : (err ? err.message : 'Unknown error');
+      const lastLine = out.split(/\r?\n/).pop() || '';
+      if (err || !lastLine.startsWith('OK')) {
+        const errMsg = lastLine.startsWith('ERR:') ? lastLine.slice(4) : (err ? (err.killed ? 'Word timeout (90s)' : err.message) : 'Unknown error');
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        if (/COM|80080005|80040154|Microsoft Word|not registered/i.test(errMsg)) wordUnavailable = true;
         reject(new Error('Word PDF export failed: ' + errMsg + '. Is Microsoft Word installed?'));
         return;
       }
       if (!fs.existsSync(pdfPath)) { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} reject(new Error('Word PDF export produced no output file')); return; }
+      resolve(pdfPath);
+    });
+  });
+}
+
+// === Конвертация .xls/.xlsx через Microsoft Excel COM ===
+// Даёт попиксельное соответствие тому, что видит пользователь в Excel.
+// Использует максимально надёжные настройки, чтобы избежать зависаний на
+// нестандартных .xls (внешние ссылки, макросы, DDE-запросы, формулы).
+function convertViaExcelToPdf(excelPath) {
+  if (excelUnavailable) return Promise.reject(new Error('Excel unavailable (cached)'));
+  return new Promise((resolve, reject) => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'qd-excel-'));
+    const baseName = path.basename(excelPath).replace(/\.(xlsx?|xlsm)$/i, '');
+    const pdfPath = path.join(tmpDir, baseName + '.pdf');
+    const excelPathPS = excelPath.replace(/'/g, "''");
+    const pdfPathPS = pdfPath.replace(/'/g, "''");
+    const psScript = `
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+$ErrorActionPreference = 'Stop'
+$excel = $null
+$wb = $null
+try {
+  Write-Output 'STEP1:creating'
+  $excel = New-Object -ComObject Excel.Application
+  $excel.Visible = $false
+  $excel.DisplayAlerts = $false
+  $excel.ScreenUpdating = $false
+  $excel.AskToUpdateLinks = $false
+  $excel.AlertBeforeOverwriting = $false
+  # IgnoreRemoteRequests = игнорировать DDE-запросы от других процессов
+  try { $excel.IgnoreRemoteRequests = $true } catch {}
+  # AutomationSecurity = 3 (msoAutomationSecurityForceDisable) — отключаем макросы при открытии
+  try { $excel.AutomationSecurity = 3 } catch {}
+  Write-Output 'STEP2:opening'
+  # Workbooks.Open: Filename, UpdateLinks=0, ReadOnly=true, Format, Password, WriteResPassword,
+  # IgnoreReadOnlyRecommended=true, Origin, Delimiter, Editable, Notify, Converter, AddToMru
+  $wb = $excel.Workbooks.Open('${excelPathPS}', 0, $true, $null, $null, $null, $true)
+  # Calculation = -4135 (xlCalculationManual) — НЕ пересчитываем формулы при открытии.
+  # Это критично для тяжёлых .xls с формулами: Excel может зависнуть на минуты.
+  try { $excel.Calculation = -4135 } catch {}
+  Write-Output 'STEP3:exporting'
+  # ExportAsFixedFormat: Type=0 (xlTypePDF), Quality=0 (xlQualityStandard),
+  # IncludeDocProperties=true, IgnorePrintAreas=false, From, To, OpenAfterPublish=false
+  $wb.ExportAsFixedFormat(0, '${pdfPathPS}', 0, $false, $false)
+  Write-Output 'STEP4:closing'
+  $wb.Close($false)
+  $excel.Quit()
+  [System.Runtime.Interopservices.Marshal]::ReleaseComObject($wb) | Out-Null
+  [System.Runtime.Interopservices.Marshal]::ReleaseComObject($excel) | Out-Null
+  Write-Output 'OK'
+} catch {
+  Write-Output ('ERR:' + $_.Exception.Message)
+  try { if ($wb) { $wb.Close($false) } } catch {}
+  try { if ($excel) { $excel.Quit() } } catch {}
+  exit 1
+}`;
+    const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+    exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, { timeout: 30000, windowsHide: true }, (err, stdout, stderr) => {
+      const out = (stdout || '').trim();
+      const lastLine = out.split(/\r?\n/).pop() || '';
+      if (err || !lastLine.startsWith('OK')) {
+        const errMsg = lastLine.startsWith('ERR:') ? lastLine.slice(4) : (err ? (err.killed ? 'Excel timeout (30s)' : err.message) : 'Unknown error');
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+        // Кэшируем недоступность только для постоянных ошибок: COM-объект не зарегистрирован.
+        // Таймаут НЕ кэшируем — может быть временной проблемой (занятый файл).
+        if (/COM|80080005|80040154|Microsoft Excel|not registered/i.test(errMsg)) {
+          excelUnavailable = true;
+        }
+        reject(new Error('Excel PDF export failed: ' + errMsg));
+        return;
+      }
+      if (!fs.existsSync(pdfPath)) { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {} reject(new Error('Excel PDF export produced no output file')); return; }
       resolve(pdfPath);
     });
   });
@@ -222,15 +376,69 @@ async function renderImage(pdf, fp) {
   await embedPngIntoA4(pdf, ni.toPNG());
 }
 async function renderDocx(pdf, fp) {
-  const tempPdfPath = await convertViaWordToPdf(fp);
+  // 1. Пробуем Microsoft Word COM (Windows + MS Office).
+  // 2. Если Word недоступен — LibreOffice (кросс-платформенный fallback).
+  // 3. Если LibreOffice тоже нет — ошибка (mammoth не используем: он ломает layout).
+  let tempPdfPath = null;
+  try {
+    tempPdfPath = await convertViaWordToPdf(fp);
+  } catch (wordErr) {
+    console.error('Word COM failed, trying LibreOffice:', wordErr.message);
+    try {
+      tempPdfPath = await convertViaLibreOfficeToPdf(fp);
+    } catch (loErr) {
+      console.error('LibreOffice failed:', loErr.message);
+      throw new Error('Word и LibreOffice недоступны. Установите Microsoft Word или LibreOffice для конвертации .doc/.docx');
+    }
+  }
   try { await renderPdf(pdf, tempPdfPath); } finally { try { fs.rmSync(path.dirname(tempPdfPath), { recursive: true, force: true }); } catch {} }
 }
 async function renderDoc(pdf, fp) {
-  const tempPdfPath = await convertViaWordToPdf(fp);
+  // То же самое что renderDocx — .doc тоже идёт через Word COM / LibreOffice.
+  let tempPdfPath = null;
+  try {
+    tempPdfPath = await convertViaWordToPdf(fp);
+  } catch (wordErr) {
+    console.error('Word COM failed, trying LibreOffice:', wordErr.message);
+    try {
+      tempPdfPath = await convertViaLibreOfficeToPdf(fp);
+    } catch (loErr) {
+      console.error('LibreOffice failed:', loErr.message);
+      throw new Error('Word и LibreOffice недоступны. Установите Microsoft Word или LibreOffice для конвертации .doc/.docx');
+    }
+  }
   try { await renderPdf(pdf, tempPdfPath); } finally { try { fs.rmSync(path.dirname(tempPdfPath), { recursive: true, force: true }); } catch {} }
 }
 async function renderXlsx(pdf, fp) {
-  // Build HTML manually — only active cells, with merged cells support
+  // 1. Microsoft Excel COM — попиксельное соответствие Excel.
+  // 2. Если недоступен — LibreOffice (кросс-платформенный fallback, тоже точное соответствие).
+  // 3. Если оба недоступны — собственный HTML-рендер (только активные ячейки, без сложного layout).
+  if (!excelUnavailable) {
+    try {
+      const tempPdfPath = await convertViaExcelToPdf(fp);
+      try {
+        await renderPdf(pdf, tempPdfPath);
+        return; // Успех.
+      } finally {
+        try { fs.rmSync(path.dirname(tempPdfPath), { recursive: true, force: true }); } catch {}
+      }
+    } catch (excelErr) {
+      console.error('Excel COM failed, trying LibreOffice:', excelErr.message);
+    }
+  }
+  // Пробуем LibreOffice как fallback.
+  try {
+    const tempPdfPath = await convertViaLibreOfficeToPdf(fp);
+    try {
+      await renderPdf(pdf, tempPdfPath);
+      return;
+    } finally {
+      try { fs.rmSync(path.dirname(tempPdfPath), { recursive: true, force: true }); } catch {}
+    }
+  } catch (loErr) {
+    console.error('LibreOffice failed, falling back to HTML renderer:', loErr.message);
+  }
+  // Последний fallback — собственный HTML-рендер таблицы. Только активные ячейки.
   const html = buildXlsxHtml(fp);
   const { png } = await renderHtmlToPng(html, { width: 900 });
   await embedPngIntoA4(pdf, png);

@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('qd', {
     openInExplorer: (p) => ipcRenderer.invoke('files:open-in-explorer', p),
     dragOut: (filePath, iconPath) => ipcRenderer.sendSync('files:drag-out-sync', { filePath, iconPath }),
     onAdded: (cb) => { const l = (_e, f) => cb(f); ipcRenderer.on('files:added', l); return () => ipcRenderer.removeListener('files:added', l); },
+    onPdfUpdated: (cb) => { const l = (_e, p) => cb(p); ipcRenderer.on('files:pdf-updated', l); return () => ipcRenderer.removeListener('files:pdf-updated', l); },
+    openPdfEditor: (p) => ipcRenderer.invoke('pdf-editor:open', p),
     pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   },
   replies: { get: () => ipcRenderer.invoke('replies:get'), save: (l) => ipcRenderer.invoke('replies:save', l) },

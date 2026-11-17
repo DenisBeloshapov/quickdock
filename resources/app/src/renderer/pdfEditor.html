@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: file:; script-src 'self'" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manufacturing+Consent&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/pdfEditor.css" />
+</head>
+<body>
+  <div class="editor">
+    <header class="toolbar">
+      <div class="title">
+        <span class="brand-name">QuickDock</span>
+        <span class="sep">·</span>
+        <span class="subtitle">Редактор PDF</span>
+      </div>
+      <div class="file-name" id="fileName"></div>
+      <div class="actions">
+        <button class="ghost" id="btnReset" title="Сбросить все изменения">↺ Сбросить</button>
+        <button class="primary" id="btnSave">Сохранить как…</button>
+        <button class="primary warn" id="btnOverwrite">Перезаписать оригинал</button>
+      </div>
+    </header>
+
+    <div class="info-bar">
+      <span class="info-item mono" id="infoPages">Страниц: —</span>
+      <span class="info-item mono" id="infoChanges">Изменения: 0</span>
+      <span class="hint mono">Перетащите страницу для изменения порядка · ↻ поворот · × удаление</span>
+    </div>
+
+    <div class="pages-wrap">
+      <div class="pages-grid" id="pagesGrid">
+        <div class="loading">Загрузка…</div>
+      </div>
+    </div>
+
+    <footer class="status mono" id="status">— готов —</footer>
+  </div>
+
+  <script src="../../build/pdfjs/pdf.min.js"></script>
+  <script src="js/pdfEditor.js"></script>
+</body>
+</html>

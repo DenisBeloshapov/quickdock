@@ -4,6 +4,7 @@ const fs = require('fs');
 const store = require('./store');
 const { ClipboardWatcher } = require('./clipboard');
 const { buildPdf, classify } = require('./pdf');
+const { openPdfEditor } = require('./pdfEditor');
 
 app.commandLine.appendSwitch('high-dpi-support', 'true');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
@@ -132,7 +133,7 @@ function createTray() {
   let trayImg = nativeImage.createFromPath(path.join(__dirname, '..', '..', 'build', 'tray.png'));
   if (trayImg.isEmpty()) trayImg = nativeImage.createEmpty();
   tray = new Tray(trayImg);
-  tray.setToolTip('QuickDock');
+  tray.setToolTip('QuickDock v3.1');
   rebuildTrayMenu();
 }
 
@@ -343,4 +344,13 @@ function setupIpc() {
   ipcMain.on('icon:drag-move', (_e, { dx, dy }) => moveIconBy(dx, dy));
   ipcMain.on('icon:drag-end', () => snapIconToEdge());
   ipcMain.on('panel:focus', () => { if (panelWindow && !panelWindow.isDestroyed()) panelWindow.focus(); });
+
+  // === Редактор PDF ===
+  ipcMain.handle('pdf-editor:open', (_e, filePath) => {
+    return openPdfEditor(filePath, (newPath) => {
+      if (panelWindow && !panelWindow.isDestroyed()) {
+        panelWindow.webContents.send('files:pdf-updated', { original: filePath, newPath });
+      }
+    });
+  });
 }
