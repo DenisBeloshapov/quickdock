@@ -140,6 +140,8 @@ try {
 // Даёт попиксельное соответствие тому, что видит пользователь в Excel.
 // Использует максимально надёжные настройки, чтобы избежать зависаний на
 // нестандартных .xls (внешние ссылки, макросы, DDE-запросы, формулы).
+// Тяжёлые .xls открываются в Excel минуту и дольше — 30 с было мало.
+const EXCEL_TIMEOUT_MS = 180000;
 function convertViaExcelToPdf(excelPath) {
   if (excelUnavailable) return Promise.reject(new Error('Excel unavailable (cached)'));
   return new Promise((resolve, reject) => {
@@ -157,6 +159,13 @@ $wb = $null
 try {
   Write-Output 'STEP1:creating'
   $excel = New-Object -ComObject Excel.Application
+  # PID именно нашего экземпляра Excel — чтобы при таймауте убить только его, а не Excel пользователя.
+  try {
+    Add-Type -Namespace QD -Name Win -MemberDefinition '[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(System.IntPtr h, out int pid);'
+    $xlPid = 0
+    [void][QD.Win]::GetWindowThreadProcessId([System.IntPtr]$excel.Hwnd, [ref]$xlPid)
+    Write-Output ('PID:' + $xlPid)
+  } catch {}
   $excel.Visible = $false
   $excel.DisplayAlerts = $false
   $excel.ScreenUpdating = $false
@@ -166,6 +175,10 @@ try {
   try { $excel.IgnoreRemoteRequests = $true } catch {}
   # AutomationSecurity = 3 (msoAutomationSecurityForceDisable) — отключаем макросы при открытии
   try { $excel.AutomationSecurity = 3 } catch {}
+  try { $excel.EnableEvents = $false } catch {}
+  # Пустая книга нужна, чтобы выставить ручной пересчёт ДО открытия тяжёлого файла
+  # (без открытой книги Calculation задать нельзя, а открытие с автопересчётом — главная причина долгой загрузки).
+  try { $blank = $excel.Workbooks.Add(); $excel.Calculation = -4135 } catch {}
   Write-Output 'STEP2:opening'
   # Workbooks.Open: Filename, UpdateLinks=0, ReadOnly=true, Format, Password, WriteResPassword,
   # IgnoreReadOnlyRecommended=true, Origin, Delimiter, Editable, Notify, Converter, AddToMru
@@ -173,6 +186,7 @@ try {
   # Calculation = -4135 (xlCalculationManual) — НЕ пересчитываем формулы при открытии.
   # Это критично для тяжёлых .xls с формулами: Excel может зависнуть на минуты.
   try { $excel.Calculation = -4135 } catch {}
+  try { if ($blank) { $blank.Close($false) } } catch {}
   Write-Output 'STEP3:exporting'
   # ExportAsFixedFormat: Type=0 (xlTypePDF), Quality=0 (xlQualityStandard),
   # IncludeDocProperties=true, IgnorePrintAreas=false, From, To, OpenAfterPublish=false
@@ -190,11 +204,16 @@ try {
   exit 1
 }`;
     const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
-    exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, { timeout: 30000, windowsHide: true }, (err, stdout, stderr) => {
+    exec(`powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`, { timeout: EXCEL_TIMEOUT_MS, windowsHide: true }, (err, stdout, stderr) => {
       const out = (stdout || '').trim();
+      // При таймауте powershell убит, а наш Excel остаётся в фоне — добиваем его по PID.
+      if (err && err.killed) {
+        const m = out.match(/PID:(\d+)/);
+        if (m && Number(m[1]) > 0) { try { exec(`taskkill /PID ${m[1]} /F`, { windowsHide: true }, () => {}); } catch {} }
+      }
       const lastLine = out.split(/\r?\n/).pop() || '';
       if (err || !lastLine.startsWith('OK')) {
-        const errMsg = lastLine.startsWith('ERR:') ? lastLine.slice(4) : (err ? (err.killed ? 'Excel timeout (30s)' : err.message) : 'Unknown error');
+        const errMsg = lastLine.startsWith('ERR:') ? lastLine.slice(4) : (err ? (err.killed ? `Excel timeout (${EXCEL_TIMEOUT_MS / 1000}s)` : err.message) : 'Unknown error');
         try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
         // Кэшируем недоступность только для постоянных ошибок: COM-объект не зарегистрирован.
         // Таймаут НЕ кэшируем — может быть временной проблемой (занятый файл).
@@ -248,14 +267,26 @@ function buildXlsxHtml(fp) {
   const wb = XLSX.readFile(fp, { cellStyles: true, cellDates: true });
   const parts = [];
 
-  for (const sheetName of wb.SheetNames) {
+  const sheetMeta = (wb.Workbook && wb.Workbook.Sheets) || [];
+  const wbNames = (wb.Workbook && wb.Workbook.Names) || [];
+  for (let si = 0; si < wb.SheetNames.length; si++) {
+    const sheetName = wb.SheetNames[si];
     const ws = wb.Sheets[sheetName];
     if (!ws) continue;
+    if (sheetMeta[si] && sheetMeta[si].Hidden) continue; // скрытые листы в PDF не нужны
 
     // Get the active range — only cells with data
     const ref = ws['!ref'] || '';
     if (!ref) continue;
-    const range = XLSX.utils.decode_range(ref);
+    let range = XLSX.utils.decode_range(ref);
+    // Область печати (_xlnm.Print_Area) — как в Excel; всё за её пределами (заметки, служебные столбцы) не печатается.
+    const pa = wbNames.find(n => n.Name === '_xlnm.Print_Area' && n.Sheet === si && n.Ref && !/#REF/.test(n.Ref));
+    if (pa) {
+      try {
+        const r = XLSX.utils.decode_range(pa.Ref.split('!').pop().replace(/\$/g, '').split(',')[0]);
+        range = { s: { r: Math.max(r.s.r, range.s.r), c: Math.max(r.s.c, range.s.c) }, e: { r: Math.min(r.e.r, range.e.r), c: Math.min(r.e.c, range.e.c) } };
+      } catch {}
+    }
     const minRow = range.s.r;
     const maxRow = range.e.r;
     const minCol = range.s.c;
