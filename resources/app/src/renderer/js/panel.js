@@ -44,8 +44,24 @@
       const li = document.createElement('li');
       li.className = 'file-item' + (selectedPaths.has(file.path) ? ' selected' : '') + (file.isOutput ? ' is-output' : '');
       li.dataset.path = file.path;
-      li.innerHTML = '<span class="file-grip" title="Перетащите, чтобы вытащить файл" draggable="true">⠿</span><span class="file-check"></span><span class="file-icon">' + iconForExt(file.ext) + '</span><div class="file-info"><span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-meta">' + file.ext.replace('.', '').toUpperCase() + ' · ' + formatSize(file.size) + '</span></div><div class="file-actions"><button class="ghost small" data-action="open" title="Показать в проводнике">⤢</button><button class="ghost small" data-action="remove" title="Удалить">✕</button></div>';
+      const isPdf = file.ext.toLowerCase() === '.pdf';
+      const isImg = ['.jpg', '.jpeg', '.jfif', '.png', '.bmp', '.gif', '.webp'].includes(file.ext.toLowerCase());
+      li.innerHTML = '<span class="file-grip" title="Перетащите, чтобы вытащить файл" draggable="true">⠿</span><span class="file-check"></span><span class="file-icon">' + iconForExt(file.ext) + '</span><div class="file-info"><span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-meta">' + file.ext.replace('.', '').toUpperCase() + ' · ' + formatSize(file.size) + '</span></div><div class="file-actions">' + (isPdf ? '<button class="ghost small" data-action="edit" title="Редактировать страницы (reorder / rotate)">✎</button>' : '') + (isImg ? '<button class="ghost small" data-action="edit-img" title="Редактор: обрезка, поворот, в PDF">✎</button>' : '') + '<button class="ghost small" data-action="open" title="Показать в проводнике">⤢</button><button class="ghost small" data-action="remove" title="Удалить">✕</button></div>';
       li.addEventListener('click', (e) => { if (e.target.closest('button') || e.target.closest('.file-grip')) return; toggleSelect(file.path); });
+      if (isPdf) {
+        li.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          qd.files.openPdfEditor(file.path);
+          flashFooter('Открываю редактор PDF…');
+        });
+      }
+      if (isImg) {
+        li.querySelector('[data-action="edit-img"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          qd.files.openImageEditor(file.path);
+          flashFooter('Открываю редактор изображений…');
+        });
+      }
       li.querySelector('[data-action="open"]').addEventListener('click', (e) => { e.stopPropagation(); qd.files.openInExplorer(file.path); });
       li.querySelector('[data-action="remove"]').addEventListener('click', async (e) => { e.stopPropagation(); await qd.files.remove(file.path); selectedPaths.delete(file.path); filesList = await qd.files.list(); renderFiles(); });
       setupDragOut(li.querySelector('.file-grip'), file);
@@ -104,6 +120,21 @@
   document.getElementById('btnClearFiles').addEventListener('click', async () => { await qd.files.clear(); filesList = []; selectedPaths.clear(); renderFiles(); document.getElementById('pdfStatus').textContent = ''; });
   qd.files.onAdded((files) => { filesList = files; renderFiles(); });
   qd.files.list().then((files) => { filesList = files; renderFiles(); });
+  // После сохранения в редакторе PDF — обновляем путь в списке
+  qd.files.onPdfUpdated((p) => {
+    const idx = filesList.findIndex((f) => f.path === p.original);
+    if (idx >= 0) {
+      const old = filesList[idx];
+      filesList[idx] = {
+        path: p.newPath,
+        name: p.newPath.split(/[\\/]/).pop(),
+        size: old.size, ext: '.pdf', kind: 'pdf', isOutput: true,
+      };
+      if (selectedPaths.has(p.original)) { selectedPaths.delete(p.original); selectedPaths.add(p.newPath); }
+      renderFiles();
+      flashFooter('PDF обновлён: ' + filesList[idx].name);
+    }
+  });
   let replies = [];
   let editingIdx = -1;
   function renderReplies() {

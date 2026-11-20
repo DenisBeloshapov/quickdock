@@ -1,0 +1,190 @@
+html, body { width:100%; height:100%; background:#0A0A0A; overflow:hidden; margin:0; padding:0; }
+.editor { display:flex; flex-direction:column; width:100vw; height:100vh; }
+
+.toolbar {
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:14px 22px;
+  background:var(--surface);
+  border-bottom:1px solid var(--border-faint);
+}
+.title { display:flex; align-items:baseline; gap:8px; }
+.brand-name { font-family:'Manufacturing Consent', var(--font-serif); font-size:20px; letter-spacing:0.01em; color:var(--text); }
+.sep { color:var(--text-faint); }
+.subtitle { font-family:var(--font-mono); font-size:11px; color:var(--text-dim); letter-spacing:0.08em; text-transform:uppercase; }
+.actions { display:flex; gap:10px; margin-left:auto; align-items:center; flex-wrap:wrap; }
+.actions button { padding:8px 14px; }
+
+.select-wrap {
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim);
+  padding:0 0 0 4px;
+}
+.select-wrap select {
+  font-family:var(--font-mono); font-size:11px; color:var(--text);
+  background:var(--surface-2); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:7px 10px; outline:none; cursor:pointer; transition:border-color 120ms ease;
+}
+.select-wrap select:hover, .select-wrap select:focus { border-color:var(--accent-dim); }
+
+.info-bar {
+  display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+  padding:10px 22px;
+  background:var(--bg);
+  border-bottom:1px solid var(--border-faint);
+}
+.info-item { font-size:11px; color:var(--text); letter-spacing:0.06em; }
+.hint { margin-left:auto; color:var(--text-faint); font-size:10px; letter-spacing:0.04em; }
+
+.workspace { flex:1; display:flex; min-height:0; }
+
+/* --- Боковая лента карточек --- */
+.sidebar {
+  width:248px; flex-shrink:0;
+  display:flex; flex-direction:column; gap:14px;
+  padding:18px 16px;
+  overflow-y:auto;
+  background:var(--surface);
+  border-right:1px solid var(--border-faint);
+}
+.cards { display:flex; flex-direction:column; gap:14px; }
+
+.card {
+  position:relative; cursor:grab;
+  background:var(--surface-2);
+  border:1px solid var(--border-faint);
+  border-radius:var(--radius);
+  overflow:hidden;
+  animation:cardIn 260ms ease both;
+  transition:border-color 140ms ease, transform 140ms ease, opacity 140ms ease, box-shadow 140ms ease;
+}
+@keyframes cardIn { from { opacity:0; transform:translateY(10px) scale(0.98); } to { opacity:1; transform:none; } }
+.card:hover { border-color:var(--border); transform:translateY(-1px); }
+.card.selected { border-color:var(--accent); box-shadow:0 0 0 2px rgba(238,50,57,0.25); }
+.card.dragging { opacity:0.35; cursor:grabbing; }
+.card.drag-over { border-color:var(--accent); background:rgba(238,50,57,0.06); }
+.card.removing { opacity:0; transform:scale(0.94); }
+
+.card-head {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:6px 8px 6px 10px;
+  background:var(--surface-3);
+  border-bottom:1px solid var(--border-faint);
+  font-family:var(--font-mono); font-size:10px; color:var(--text-dim); letter-spacing:0.08em;
+}
+.card-num { color:var(--accent); font-weight:bold; }
+.card-tools { display:flex; gap:2px; }
+.card-tools button {
+  background:transparent; border:none; color:var(--text-dim);
+  font-size:14px; padding:2px 6px; border-radius:4px; text-transform:none; letter-spacing:0;
+}
+.card-tools button:hover { color:var(--accent); background:rgba(238,50,57,0.1); }
+.thumb {
+  background:#2c2c2e; height:140px; padding:8px;
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+}
+.thumb canvas { max-width:100%; max-height:100%; box-shadow:0 2px 8px rgba(0,0,0,0.4); }
+.card-foot {
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  padding:6px 10px;
+  background:var(--surface-3); border-top:1px solid var(--border-faint);
+  font-family:var(--font-mono); font-size:9px; color:var(--text-faint); letter-spacing:0.06em;
+}
+.card-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.card-badge { color:var(--accent); font-weight:bold; flex-shrink:0; }
+
+.add-card {
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
+  min-height:72px; border:1px dashed var(--border); border-radius:var(--radius);
+  color:var(--text-dim); font-size:20px;
+}
+.add-card span { font-size:10px; letter-spacing:0.08em; }
+.add-card:hover { border-color:var(--accent-dim); color:var(--accent); background:rgba(238,50,57,0.04); }
+
+/* --- Сцена с рамкой обрезки --- */
+.stage { flex:1; min-width:0; display:flex; flex-direction:column; background:var(--bg); }
+.stage-inner {
+  flex:1; min-height:0; position:relative;
+  display:flex; align-items:center; justify-content:center;
+  padding:36px; overflow:hidden; /* гасит затемнение рамки за пределами сцены */
+}
+.crop-wrap { position:relative; line-height:0; animation:fadeIn 220ms ease both; }
+@keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+.crop-wrap[hidden], .stage-bar[hidden], .empty[hidden] { display:none; }
+#stageCanvas { display:block; box-shadow:0 8px 40px rgba(0,0,0,0.55); background:#222; }
+
+.crop {
+  position:absolute; touch-action:none; cursor:move;
+  border:1px solid #fff;
+  box-shadow:0 0 0 9999px rgba(0,0,0,0.58);
+}
+.grid-line { position:absolute; background:rgba(255,255,255,0.28); pointer-events:none; }
+.grid-line.v1 { left:33.333%; top:0; bottom:0; width:1px; }
+.grid-line.v2 { left:66.666%; top:0; bottom:0; width:1px; }
+.grid-line.h1 { top:33.333%; left:0; right:0; height:1px; }
+.grid-line.h2 { top:66.666%; left:0; right:0; height:1px; }
+.h {
+  position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px;
+  background:var(--accent); border:2px solid #fff; border-radius:3px;
+  transition:transform 100ms ease;
+}
+.h:hover { transform:scale(1.25); }
+.h.nw { left:0; top:0; cursor:nwse-resize; }
+.h.n  { left:50%; top:0; cursor:ns-resize; }
+.h.ne { left:100%; top:0; cursor:nesw-resize; }
+.h.e  { left:100%; top:50%; cursor:ew-resize; }
+.h.se { left:100%; top:100%; cursor:nwse-resize; }
+.h.s  { left:50%; top:100%; cursor:ns-resize; }
+.h.sw { left:0; top:100%; cursor:nesw-resize; }
+.h.w  { left:0; top:50%; cursor:ew-resize; }
+
+.stage-bar {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:14px 22px;
+  background:var(--surface);
+  border-top:1px solid var(--border-faint);
+}
+.stage-bar button { padding:8px 14px; }
+.crop-info { margin-left:auto; font-size:11px; color:var(--text-dim); letter-spacing:0.06em; }
+
+.empty { text-align:center; display:flex; flex-direction:column; align-items:center; gap:14px; animation:fadeIn 300ms ease both; }
+.empty-icon { font-size:54px; color:var(--text-faint); line-height:1; }
+.empty-title { font-size:18px; color:var(--text); }
+.empty-sub { font-size:11px; color:var(--text-faint); letter-spacing:0.1em; }
+.empty button { margin-top:6px; padding:10px 18px; }
+
+/* --- Оверлей перетаскивания файлов --- */
+.drop-overlay {
+  position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+  background:rgba(10,10,10,0.82); backdrop-filter:blur(2px);
+  opacity:0; pointer-events:none; transition:opacity 160ms ease;
+}
+.drop-overlay.active { opacity:1; }
+.drop-box {
+  padding:46px 70px; border:2px dashed var(--accent); border-radius:var(--radius-lg);
+  font-size:18px; color:var(--text); background:rgba(238,50,57,0.07);
+  transform:scale(0.96); transition:transform 160ms ease;
+}
+.drop-overlay.active .drop-box { transform:scale(1); }
+
+.status {
+  padding:8px 22px;
+  background:var(--surface);
+  border-top:1px solid var(--border-faint);
+  font-family:var(--font-mono); font-size:11px; color:var(--text-faint); letter-spacing:0.06em;
+  min-height:32px; display:flex; align-items:center;
+}
+.status.success { color:#5ab368; }
+.status.error, .status.warning { color:var(--accent); }
+button:disabled { opacity:0.45; cursor:default; pointer-events:none; }
+
+/* --- Узкое окно: лента карточек уходит наверх --- */
+@media (max-width: 900px) {
+  .workspace { flex-direction:column; }
+  .sidebar { width:auto; flex-direction:row; overflow-x:auto; overflow-y:hidden; border-right:none; border-bottom:1px solid var(--border-faint); padding:12px 14px; }
+  .cards { flex-direction:row; }
+  .card { width:150px; flex-shrink:0; }
+  .thumb { height:96px; }
+  .add-card { width:96px; flex-shrink:0; }
+  .stage-inner { padding:18px; }
+  .hint { display:none; }
+}
