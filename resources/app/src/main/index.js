@@ -5,6 +5,7 @@ const store = require('./store');
 const { ClipboardWatcher } = require('./clipboard');
 const { buildPdf, classify } = require('./pdf');
 const { openPdfEditor } = require('./pdfEditor');
+const { openImageEditor } = require('./imageEditor');
 
 app.commandLine.appendSwitch('high-dpi-support', 'true');
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
@@ -344,6 +345,12 @@ function setupIpc() {
   ipcMain.on('icon:drag-move', (_e, { dx, dy }) => moveIconBy(dx, dy));
   ipcMain.on('icon:drag-end', () => snapIconToEdge());
   ipcMain.on('panel:focus', () => { if (panelWindow && !panelWindow.isDestroyed()) panelWindow.focus(); });
+
+  // === Редактор изображений (обрезка/поворот → PDF) ===
+  ipcMain.handle('image-editor:open', (_e, filePath) => {
+    // Готовый PDF сразу появляется в списке файлов панели.
+    return openImageEditor([filePath], (outPath) => { addFiles([outPath]); });
+  });
 
   // === Редактор PDF ===
   ipcMain.handle('pdf-editor:open', (_e, filePath) => {

@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('qd', {
     onAdded: (cb) => { const l = (_e, f) => cb(f); ipcRenderer.on('files:added', l); return () => ipcRenderer.removeListener('files:added', l); },
     onPdfUpdated: (cb) => { const l = (_e, p) => cb(p); ipcRenderer.on('files:pdf-updated', l); return () => ipcRenderer.removeListener('files:pdf-updated', l); },
     openPdfEditor: (p) => ipcRenderer.invoke('pdf-editor:open', p),
+    openImageEditor: (p) => ipcRenderer.invoke('image-editor:open', p),
     pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
   },
   replies: { get: () => ipcRenderer.invoke('replies:get'), save: (l) => ipcRenderer.invoke('replies:save', l) },

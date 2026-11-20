@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: file:; script-src 'self'" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manufacturing+Consent&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/imageEditor.css" />
+</head>
+<body>
+  <div class="editor">
+    <header class="toolbar">
+      <div class="title">
+        <span class="brand-name">QuickDock</span>
+        <span class="sep">·</span>
+        <span class="subtitle">Редактор изображений</span>
+      </div>
+      <div class="actions">
+        <button class="ghost" id="btnAdd" title="Добавить фото (или перетащите файлы в окно)">＋ Добавить фото</button>
+        <label class="select-wrap mono" title="Размер страницы в PDF">
+          <span>Страница</span>
+          <select id="pageMode">
+            <option value="a4">A4 с полями</option>
+            <option value="fit">По размеру фото</option>
+          </select>
+        </label>
+        <button class="ghost" id="btnReset" title="Сбросить обрезку и повороты у всех фото">↺ Сбросить</button>
+        <button class="primary" id="btnSave">Сохранить PDF…</button>
+      </div>
+    </header>
+
+    <div class="info-bar">
+      <span class="info-item mono" id="infoCount">Фото: 0</span>
+      <span class="info-item mono" id="infoChanges">Изменено: 0</span>
+      <span class="hint mono">Тяните рамку и её углы · ↻ поворот · × удаление · перетащите карточку, чтобы изменить порядок</span>
+    </div>
+
+    <div class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="cards" id="cards"></div>
+        <button class="add-card" id="btnAddCard" title="Добавить фото">＋<span>Добавить</span></button>
+      </aside>
+
+      <main class="stage" id="stage">
+        <div class="stage-inner" id="stageInner">
+          <div class="empty" id="empty">
+            <div class="empty-icon">▢</div>
+            <div class="empty-title">Перетащите фото сюда</div>
+            <div class="empty-sub mono">JPG · PNG · WEBP · BMP · GIF</div>
+            <button class="primary" id="btnAddEmpty">Выбрать файлы…</button>
+          </div>
+          <div class="crop-wrap" id="cropWrap" hidden>
+            <canvas id="stageCanvas"></canvas>
+            <div class="crop" id="crop">
+              <div class="grid-line v1"></div><div class="grid-line v2"></div>
+              <div class="grid-line h1"></div><div class="grid-line h2"></div>
+              <i class="h nw" data-h="nw"></i><i class="h n" data-h="n"></i><i class="h ne" data-h="ne"></i>
+              <i class="h e" data-h="e"></i><i class="h se" data-h="se"></i><i class="h s" data-h="s"></i>
+              <i class="h sw" data-h="sw"></i><i class="h w" data-h="w"></i>
+            </div>
+          </div>
+        </div>
+        <div class="stage-bar" id="stageBar" hidden>
+          <button class="ghost" id="btnRotL" title="Повернуть на 90° против часовой">↺ Влево</button>
+          <button class="ghost" id="btnRotR" title="Повернуть на 90° по часовой">↻ Вправо</button>
+          <button class="ghost" id="btnCropReset" title="Вернуть рамку на всё изображение">⛶ Сбросить рамку</button>
+          <span class="crop-info mono" id="cropInfo"></span>
+        </div>
+      </main>
+    </div>
+
+    <footer class="status mono" id="status">— готов —</footer>
+  </div>
+
+  <div class="drop-overlay" id="dropOverlay"><div class="drop-box">Отпустите, чтобы добавить фото</div></div>
+
+  <script src="js/imageEditor.js"></script>
+</body>
+</html>

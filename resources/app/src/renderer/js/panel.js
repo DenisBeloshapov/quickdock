@@ -45,13 +45,21 @@
       li.className = 'file-item' + (selectedPaths.has(file.path) ? ' selected' : '') + (file.isOutput ? ' is-output' : '');
       li.dataset.path = file.path;
       const isPdf = file.ext.toLowerCase() === '.pdf';
-      li.innerHTML = '<span class="file-grip" title="Перетащите, чтобы вытащить файл" draggable="true">⠿</span><span class="file-check"></span><span class="file-icon">' + iconForExt(file.ext) + '</span><div class="file-info"><span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-meta">' + file.ext.replace('.', '').toUpperCase() + ' · ' + formatSize(file.size) + '</span></div><div class="file-actions">' + (isPdf ? '<button class="ghost small" data-action="edit" title="Редактировать страницы (reorder / rotate)">✎</button>' : '') + '<button class="ghost small" data-action="open" title="Показать в проводнике">⤢</button><button class="ghost small" data-action="remove" title="Удалить">✕</button></div>';
+      const isImg = ['.jpg', '.jpeg', '.jfif', '.png', '.bmp', '.gif', '.webp'].includes(file.ext.toLowerCase());
+      li.innerHTML = '<span class="file-grip" title="Перетащите, чтобы вытащить файл" draggable="true">⠿</span><span class="file-check"></span><span class="file-icon">' + iconForExt(file.ext) + '</span><div class="file-info"><span class="file-name">' + escapeHtml(file.name) + '</span><span class="file-meta">' + file.ext.replace('.', '').toUpperCase() + ' · ' + formatSize(file.size) + '</span></div><div class="file-actions">' + (isPdf ? '<button class="ghost small" data-action="edit" title="Редактировать страницы (reorder / rotate)">✎</button>' : '') + (isImg ? '<button class="ghost small" data-action="edit-img" title="Редактор: обрезка, поворот, в PDF">✎</button>' : '') + '<button class="ghost small" data-action="open" title="Показать в проводнике">⤢</button><button class="ghost small" data-action="remove" title="Удалить">✕</button></div>';
       li.addEventListener('click', (e) => { if (e.target.closest('button') || e.target.closest('.file-grip')) return; toggleSelect(file.path); });
       if (isPdf) {
         li.querySelector('[data-action="edit"]').addEventListener('click', (e) => {
           e.stopPropagation();
           qd.files.openPdfEditor(file.path);
           flashFooter('Открываю редактор PDF…');
+        });
+      }
+      if (isImg) {
+        li.querySelector('[data-action="edit-img"]').addEventListener('click', (e) => {
+          e.stopPropagation();
+          qd.files.openImageEditor(file.path);
+          flashFooter('Открываю редактор изображений…');
         });
       }
       li.querySelector('[data-action="open"]').addEventListener('click', (e) => { e.stopPropagation(); qd.files.openInExplorer(file.path); });
